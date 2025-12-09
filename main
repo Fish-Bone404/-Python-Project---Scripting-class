@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+import argparse
+import sqlite3
+import sys
+import re
+from datetime import datetime
+#this is a snippet of what i have been doing at work these past couple of months
+
+def get_connection(db_path):
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            description TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'normal',
+            created_at TEXT NOT NULL,
+            completed INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.commit()
+    return conn
+
+
+def add_task(conn, description, priority):
+    now = datetime.now().isoformat(timespec="seconds")
+    with conn:
+        conn.execute(
+            "INSERT INTO tasks (description, priority, created_at) VALUES (?, ?, ?)",
+            (description, priority, now),
+        )
+    print("Task added.")
+
+
+def list_tasks(conn, show_all=False):
+    if show_all:
+        rows = conn.execute(
+            "SELECT * FROM tasks ORDER BY completed, created_at"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE completed = 0 ORDER BY created_at"
+        ).fetchall()
+
+    if not rows:
+        print("No tasks to show.")
+        return
+
+    for row in rows:
+        status = "✓" if row["completed"] else " "
+        print(
+            f"[{status}] {row['id']:3d}  {row['description']}  "
+            f"(priority: {row['priority']}, created: {row['created_at']})"
+        )
+
+
+def complete_task(conn, task_id):
+    with conn:
+        cur = conn.execute(
+            "UPDATE tasks SET completed = 1 WHERE id = ?", (task_id,)
+        )
+    if cur.rowcount == 0:
+        print(f"No task found with id {task_id}.", file=sys.stderr)
+        sys.exit(1)
+    print(f"Task {task_id} marked as completed.")
+
+
+def delete_task(conn, task_id):
+    with conn:
+        cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    if cur.rowcount == 0:
+        print(f"No task found with id {task_id}.", file=sys.stderr)
+        sys.exit(1)
+    print(f"Task {task_id} deleted.")
+
+
+def search_tasks(conn, pattern, include_completed=False):
+    try:
+        regex = re.compile(pattern, re.IGNORECASE)
+    except re.error as e:
+        print(f"Invalid regular expression: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if include_completed:
+        rows = conn.execute("SELECT * FROM tasks").fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE completed = 0"
+        ).fetchall()
+
+    matched = []
+    for row in rows:
+        if regex.search(row["description"]):
+            matched.append(row)
+
+    if not matched:
+        print("No tasks matched that pattern.")
+        return
+
+    for row in matched:
+        status = "✓" if row["completed"] else " "
+        print(
+            f"[{status}] {row['id']:3d}  {row['description']}  "
+            f"(priority: {row['priority']}, created: {row['created_at']})"
+        )
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Todo list manager stored in an SQLite database."
+    )
+    parser.add_argument(
+        "--db",
+        default="todo.db",
+        help="Path to SQLite database file (default: todo.db)",
+    )
+
+    subparsers = parser.add_subparsers(
+        title="commands", dest="command", required=True
+    )
+
+    # add
+    p_add = subparsers.add_parser("add", help="Add a new task.")
+    p_add.add_argument(
+        "description",
+        help="Description of the task to add.",
+    )
+    p_add.add_argument(
+        "-p",
+        "--priority",
+        choices=["low", "normal", "high"],
+        default="normal",
+        help="Priority for the task (low, normal, high). Default is normal.",
+    )
+
+    # list
+    p_list = subparsers.add_parser("list", help="List tasks.")
+    p_list.add_argument(
+        "-a",
+        "--all",
+        action="store_true",
+        help="Include completed tasks as well.",
+    )
+
+    # complete
+    p_complete = subparsers.add_parser(
+        "complete", help="Mark a task as completed."
+    )
+    p_complete.add_argument(
+        "id",
+        type=int,
+        help="Id of the task to mark completed.",
+    )
+
+    # delete
+    p_delete = subparsers.add_parser("delete", help="Delete a task.")
+    p_delete.add_argument(
+        "id",
+        type=int,
+        help="Id of the task to delete.",
+    )
+
+    # search
+    p_search = subparsers.add_parser(
+        "search", help="Search tasks using a regular expression."
+    )
+    p_search.add_argument(
+        "pattern",
+        help="Regular expression to match against the task description.",
+    )
+    p_search.add_argument(
+        "-a",
+        "--all",
+        action="store_true",
+        help="Search completed tasks as well as open ones.",
+    )
+
+    return parser
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    conn = get_connection(args.db)
+
+    if args.command == "add":
+        if not args.description.strip():
+            print("Description cannot be empty.", file=sys.stderr)
+            sys.exit(1)
+        add_task(conn, args.description.strip(), args.priority)
+    elif args.command == "list":
+        list_tasks(conn, show_all=args.all)
+    elif args.command == "complete":
+        complete_task(conn, args.id)
+    elif args.command == "delete":
+        delete_task(conn, args.id)
+    elif args.command == "search":
+        search_tasks(conn, args.pattern, include_completed=args.all)
+    else:
+        # Should not happen because argparse enforces choices
+        parser.error("Unknown command.")
+
+
+if __name__ == "__main__":
+    main()
