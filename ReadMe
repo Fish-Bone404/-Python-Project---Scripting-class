@@ -1,0 +1,54 @@
+# Todo CLI with SQLite
+
+## Purpose
+
+This project is a small command line todo list manager that stores tasks in an SQLite database file.  
+The goal is to have a quick way to add, list, complete, delete, and search tasks without opening a GUI app or website.
+
+It is useful because:
+
+- Tasks are saved in a single `todo.db` file that travels with the project.
+- You can script it or combine it with other tools in the shell.
+- It supports priorities and searching tasks with regular expressions.
+
+This is different from the examples we used in class and from the earlier bash project.  
+Here the focus is on argument parsing with subcommands, SQLite storage, and regex based search.
+
+## Features
+
+- Stores tasks in an SQLite database (no external server needed).
+- Subcommands:
+  - `add` add a new task.
+  - `list` show open tasks or all tasks.
+  - `complete` mark a task as done.
+  - `delete` remove a task.
+  - `search` find tasks whose description matches a regular expression.
+- Supports three priorities: `low`, `normal`, `high`.
+- Uses a regular expression for searching descriptions.
+- Has `-h` and `--help` output from `argparse`.
+- Handles bad input with clear error messages.
+
+## Usage
+
+Create and use the database with a few commands.
+
+```bash
+# add tasks
+python3 todo_cli.py add "Write lab report" -p high
+python3 todo_cli.py add "Clean kitchen" -p low
+
+# list open tasks
+python3 todo_cli.py list
+
+# list all tasks including completed
+python3 todo_cli.py list --all
+
+# mark task id 1 as completed
+python3 todo_cli.py complete 1
+
+# delete task id 2
+python3 todo_cli.py delete 2
+
+# search tasks with a regex (case insensitive)
+python3 todo_cli.py search "lab"
+python3 todo_cli.py search "clean|wash" --all
